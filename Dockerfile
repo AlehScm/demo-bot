@@ -13,10 +13,8 @@ RUN pip install --no-cache-dir --upgrade pip && \
 COPY . .
 
 RUN adduser --disabled-password --gecos "" app && \
-    chown -R app:app /app && \
-    chmod +x /app/entrypoint.sh
+    chown -R app:app /app
 
 USER app
 
-ENTRYPOINT ["./entrypoint.sh"]
 CMD ["python", "main.py"]

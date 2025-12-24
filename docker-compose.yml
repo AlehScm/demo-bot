@@ -1,0 +1,20 @@
+version: "3.9"
+
+services:
+  app:
+    container_name: python_app
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: python-app:dev
+    environment:
+      APP_ENV: DEV
+      TWELVEDATA_API_KEY: ${TWELVEDATA_API_KEY}
+      TWELVEDATA_BASE_URL: ${TWELVEDATA_BASE_URL}
+    ports:
+      - "8000:8000"
+    # These must be indented under the service name 'app'
+    volumes:
+      - ./:/app
+    command: ["python", "main.py", "--symbol", "BTC/USD"]
+    restart: unless-stopped
