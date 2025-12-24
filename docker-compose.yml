@@ -16,5 +16,5 @@ services:
     # These must be indented under the service name 'app'
     volumes:
       - ./:/app
-    command: ["python", "main.py", "--symbol", "BTC/USD"]
+    command: ["uvicorn", "interfaces.api.routes:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
     restart: unless-stopped

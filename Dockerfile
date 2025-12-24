@@ -17,4 +17,6 @@ RUN adduser --disabled-password --gecos "" app && \
 
 USER app
 
-CMD ["python", "main.py"]
+EXPOSE 8000
+
+CMD ["uvicorn", "interfaces.api.routes:app", "--host", "0.0.0.0", "--port", "8000"]
