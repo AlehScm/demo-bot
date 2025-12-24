@@ -1,20 +1,20 @@
 import argparse
-import os
 from datetime import datetime
 
 from application.policies.timeframe_policy import TimeframePolicy
 from application.use_cases.fetch_historical_ohlcv import FetchHistoricalOHLCV
 from application.use_cases.fetch_latest_ohlcv import FetchLatestOHLCV
 from domain.value_objects.timeframe import Timeframe
+from infrastructure.config.settings import load_settings
 from infrastructure.data_providers.twelve_data_client import TwelveDataClient
 from infrastructure.storage.logging.logger import get_logger
 from interfaces.controllers.market_data_controller import MarketDataController
 from interfaces.presenters.console_presenter import format_candles
 
 
-def build_controller(api_key: str) -> MarketDataController:
+def build_controller(api_key: str, base_url: str | None = None) -> MarketDataController:
     timeframe_policy = TimeframePolicy()
-    data_provider = TwelveDataClient(api_key=api_key)
+    data_provider = TwelveDataClient(api_key=api_key, base_url=base_url or "https://api.twelvedata.com")
 
     fetch_latest = FetchLatestOHLCV(
         market_data_service=data_provider,
@@ -50,16 +50,19 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> None:
-    logger = get_logger(__name__)
-    api_key = os.getenv("TWELVEDATA_API_KEY")
-    if not api_key:
+    settings = load_settings()
+    logger = get_logger(__name__, level=settings.log_level)
+
+    if not settings.api_key:
         logger.error("TWELVEDATA_API_KEY environment variable is required.")
         raise SystemExit(1)
+
+    logger.info("Starting Demo Bot in %s mode", settings.env.value)
 
     args = parse_args()
     timeframe = Timeframe(args.timeframe)
 
-    controller = build_controller(api_key=api_key)
+    controller = build_controller(api_key=settings.api_key, base_url=settings.base_url)
 
     if args.historical:
         start = datetime.fromisoformat(args.start) if args.start else None

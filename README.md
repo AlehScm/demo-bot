@@ -45,3 +45,28 @@ Run the test suite with:
 ```bash
 pytest
 ```
+
+## Docker
+
+Build the image:
+
+```bash
+docker build -t demo-bot .
+```
+
+Run the container (example):
+
+```bash
+docker run --rm \
+  -e TWELVEDATA_API_KEY="your-api-key" \
+  -e APP_ENV=PROD \
+  demo-bot \
+  --symbol AAPL --timeframe 1min --count 5
+```
+
+Configuration is environment-driven:
+
+- `APP_ENV`: `DEV`, `PAPER`, or `PROD` (default: `DEV`).
+- `TWELVEDATA_API_KEY`: required Twelve Data API key.
+- `TWELVEDATA_BASE_URL`: optional override of the Twelve Data API base URL.
+- `LOG_LEVEL`: logging verbosity (e.g., `INFO`, `DEBUG`).
