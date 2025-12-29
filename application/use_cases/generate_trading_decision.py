@@ -35,7 +35,7 @@ class GenerateTradingDecision:
         self,
         symbol: str,
         timeframe: Timeframe,
-        analysis_candles_count: int = 200,
+        analysis_candles_count: int = 5000,
     ) -> Sequence[TradingDecision]:
         """
         Generate trading decisions based on trend analysis.
