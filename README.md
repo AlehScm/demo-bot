@@ -62,6 +62,7 @@ Entrada Externa (CLI / HTTP) ──► Controllers ──► DTO/Validação ─
 | `ACCUMULATION_MIN_BOUNDARY_TOUCHES` | `3` | Toques mínimos em suporte/resistência para confirmar zona. |
 | `ACCUMULATION_MAX_ZONES` | `5` | Limite de zonas retornadas. |
 | `ACCUMULATION_MIN_GAP_BETWEEN_ZONES` | `15` | Gap mínimo (em candles) entre zonas para evitar clusters. |
+| `ACCUMULATION_SAFE_ZONE_PERCENT` | `1` | Percentual do range usado para a Safe Zone acima/abaixo da zona. |
 
 Todas as validações de limite são aplicadas no carregador de configuração e no próprio value object `LiquidityIndicatorSettings`.
 

@@ -68,6 +68,10 @@ class AccumulationZoneResponse(BaseModel):
     low_price: float
     candle_count: int
     strength: float  # 0.0 to 1.0
+    safe_zone_high: float
+    safe_zone_low: float
+    is_active: bool
+    invalidated_at: Optional[int] = None
 
 
 class LiquidityIndicatorResponse(BaseModel):

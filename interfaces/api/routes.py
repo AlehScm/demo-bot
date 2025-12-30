@@ -477,6 +477,10 @@ def create_app() -> FastAPI:
                     low_price=float(zone.low_price),
                     candle_count=zone.candle_count,
                     strength=zone.strength,
+                    safe_zone_high=float(zone.safe_zone_high),
+                    safe_zone_low=float(zone.safe_zone_low),
+                    is_active=zone.is_active,
+                    invalidated_at=int(zone.invalidated_at.timestamp()) if zone.invalidated_at else None,
                 ))
             
             logger.info(
@@ -576,6 +580,10 @@ def create_app() -> FastAPI:
                     low_price=float(zone.low_price),
                     candle_count=zone.candle_count,
                     strength=zone.strength,
+                    safe_zone_high=float(zone.safe_zone_high),
+                    safe_zone_low=float(zone.safe_zone_low),
+                    is_active=zone.is_active,
+                    invalidated_at=int(zone.invalidated_at.timestamp()) if zone.invalidated_at else None,
                 ))
             
             logger.info(

@@ -7,6 +7,7 @@ price ranges where the market is consolidating (moving sideways).
 
 from __future__ import annotations
 
+from dataclasses import replace
 from decimal import Decimal
 from typing import Sequence
 
@@ -90,6 +91,8 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
         # Re-sort by time for display
         filtered_zones.sort(key=lambda z: z.start_time)
 
+        filtered_zones = self._apply_safe_zone_breakouts(filtered_zones, candles)
+
         self._zones = filtered_zones
 
         return LiquiditySignal(
@@ -162,6 +165,7 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
 
         # Calculate strength
         strength = self._calculate_zone_strength(window, range_percent, touches)
+        safe_high, safe_low = self._calculate_safe_zone_bounds(high_price, low_price)
 
         return AccumulationZone(
             start_time=window[0].timestamp,
@@ -170,8 +174,18 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
             low_price=low_price,
             candle_count=len(window),
             strength=strength,
+            safe_zone_high=safe_high,
+            safe_zone_low=safe_low,
             zone_type=ZoneType.ACCUMULATION,
         )
+
+    def _calculate_safe_zone_bounds(
+        self, high_price: Decimal, low_price: Decimal
+    ) -> tuple[Decimal, Decimal]:
+        """Calculate the safe zone above and below the accumulation range."""
+        range_size = high_price - low_price
+        padding = range_size * (self._settings.safe_zone_percent / Decimal("100"))
+        return high_price + padding, low_price - padding
 
     def _is_sideways(self, window: Sequence[Candle]) -> bool:
         """
@@ -289,6 +303,44 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
             1.0
         )
 
+    def _apply_safe_zone_breakouts(
+        self, zones: list[AccumulationZone], candles: Sequence[Candle]
+    ) -> list[AccumulationZone]:
+        """
+        Mark zones as invalidated only when price closes beyond the safe zone.
+        """
+        if not zones:
+            return []
+
+        updated_zones: list[AccumulationZone] = []
+        for zone in zones:
+            breakout_candle = self._find_breakout_candle(zone, candles)
+            if breakout_candle is None:
+                updated_zones.append(zone)
+                continue
+
+            updated_zones.append(replace(zone, invalidated_at=breakout_candle.timestamp))
+
+        return updated_zones
+
+    def _find_breakout_candle(
+        self, zone: AccumulationZone, candles: Sequence[Candle]
+    ) -> Candle | None:
+        """
+        Return the first candle that closes beyond the safe zone boundaries.
+        """
+        if not candles:
+            return None
+
+        for candle in candles:
+            if candle.timestamp <= zone.end_time:
+                continue
+
+            if candle.close > zone.safe_zone_high or candle.close < zone.safe_zone_low:
+                return candle
+
+        return None
+
     def _zones_can_merge(self, left: AccumulationZone, right: AccumulationZone) -> bool:
         """Check if two zones should be merged (overlap or very close with similar price ranges)."""
         overlap_start = max(left.start_time, right.start_time)
@@ -313,13 +365,18 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
 
     def _merge_zones(self, left: AccumulationZone, right: AccumulationZone) -> AccumulationZone:
         """Merge two compatible zones into one extended zone."""
+        merged_high = max(left.high_price, right.high_price)
+        merged_low = min(left.low_price, right.low_price)
+        safe_high, safe_low = self._calculate_safe_zone_bounds(merged_high, merged_low)
         return AccumulationZone(
             start_time=min(left.start_time, right.start_time),
             end_time=max(left.end_time, right.end_time),
-            high_price=max(left.high_price, right.high_price),
-            low_price=min(left.low_price, right.low_price),
+            high_price=merged_high,
+            low_price=merged_low,
             candle_count=left.candle_count + right.candle_count,
             strength=max(left.strength, right.strength),
+            safe_zone_high=safe_high,
+            safe_zone_low=safe_low,
             zone_type=ZoneType.ACCUMULATION,
         )
 
