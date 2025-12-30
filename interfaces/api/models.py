@@ -68,6 +68,8 @@ class AccumulationZoneResponse(BaseModel):
     low_price: float
     candle_count: int
     strength: float  # 0.0 to 1.0
+    liquidity_sweeps: List[dict] = []
+    range_break: dict | None = None
 
 
 class LiquidityIndicatorResponse(BaseModel):

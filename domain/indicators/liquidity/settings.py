@@ -14,6 +14,9 @@ class LiquidityIndicatorSettings:
     min_boundary_touches: int = 3
     max_zones: int = 5
     min_gap_between_zones: int = 15
+    break_invalid_pct: float = 0.2  # penetration % of range height that invalidates the zone
+    break_confirm_candles: int = 2  # closes outside to confirm break
+    sweep_max_duration: int = 5  # max candles for a sweep (quick in/out)
 
     def __post_init__(self) -> None:
         if self.min_candles_in_zone <= 0:
@@ -28,3 +31,9 @@ class LiquidityIndicatorSettings:
             raise ValueError("max_zones must be greater than zero.")
         if self.min_gap_between_zones < 0:
             raise ValueError("min_gap_between_zones cannot be negative.")
+        if not 0.0 < self.break_invalid_pct < 1.0:
+            raise ValueError("break_invalid_pct must be between 0 and 1 (exclusive).")
+        if self.break_confirm_candles <= 0:
+            raise ValueError("break_confirm_candles must be greater than zero.")
+        if self.sweep_max_duration <= 0:
+            raise ValueError("sweep_max_duration must be greater than zero.")

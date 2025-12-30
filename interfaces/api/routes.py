@@ -477,6 +477,21 @@ def create_app() -> FastAPI:
                     low_price=float(zone.low_price),
                     candle_count=zone.candle_count,
                     strength=zone.strength,
+                    liquidity_sweeps=[{
+                        "start_time": int(sweep.start_time.timestamp()),
+                        "end_time": int(sweep.end_time.timestamp()),
+                        "direction": sweep.direction.value,
+                        "penetration_percent": sweep.penetration_percent,
+                        "candle_count": sweep.candle_count,
+                    } for sweep in zone.liquidity_sweeps],
+                    range_break=None if zone.range_break is None else {
+                        "start_time": int(zone.range_break.start_time.timestamp()),
+                        "end_time": int(zone.range_break.end_time.timestamp()),
+                        "direction": zone.range_break.direction.value,
+                        "penetration_percent": zone.range_break.penetration_percent,
+                        "candle_count": zone.range_break.candle_count,
+                        "closes_outside": zone.range_break.closes_outside,
+                    },
                 ))
             
             logger.info(
@@ -576,6 +591,21 @@ def create_app() -> FastAPI:
                     low_price=float(zone.low_price),
                     candle_count=zone.candle_count,
                     strength=zone.strength,
+                    liquidity_sweeps=[{
+                        "start_time": int(sweep.start_time.timestamp()),
+                        "end_time": int(sweep.end_time.timestamp()),
+                        "direction": sweep.direction.value,
+                        "penetration_percent": sweep.penetration_percent,
+                        "candle_count": sweep.candle_count,
+                    } for sweep in zone.liquidity_sweeps],
+                    range_break=None if zone.range_break is None else {
+                        "start_time": int(zone.range_break.start_time.timestamp()),
+                        "end_time": int(zone.range_break.end_time.timestamp()),
+                        "direction": zone.range_break.direction.value,
+                        "penetration_percent": zone.range_break.penetration_percent,
+                        "candle_count": zone.range_break.candle_count,
+                        "closes_outside": zone.range_break.closes_outside,
+                    },
                 ))
             
             logger.info(

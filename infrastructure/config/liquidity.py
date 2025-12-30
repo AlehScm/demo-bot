@@ -45,4 +45,7 @@ def load_liquidity_settings() -> LiquidityIndicatorSettings:
         min_boundary_touches=_int_from_env("ACCUMULATION_MIN_BOUNDARY_TOUCHES", 3),
         max_zones=_int_from_env("ACCUMULATION_MAX_ZONES", 5),
         min_gap_between_zones=_int_from_env("ACCUMULATION_MIN_GAP_BETWEEN_ZONES", 15),
+        break_invalid_pct=float(os.getenv("ACCUMULATION_BREAK_INVALID_PCT", 0.2)),
+        break_confirm_candles=_int_from_env("ACCUMULATION_BREAK_CONFIRM_CANDLES", 2),
+        sweep_max_duration=_int_from_env("ACCUMULATION_SWEEP_MAX_DURATION", 5),
     )

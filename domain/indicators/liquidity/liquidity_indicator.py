@@ -14,7 +14,10 @@ from domain.entities.candle import Candle
 from domain.indicators.base import Indicator
 from domain.indicators.liquidity.models import (
     AccumulationZone,
+    LiquidityEventDirection,
+    LiquiditySweep,
     LiquiditySignal,
+    RangeBreak,
     ZoneType,
 )
 from domain.indicators.liquidity.settings import LiquidityIndicatorSettings
@@ -138,6 +141,9 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
         low_price = min(c.low for c in window)
         range_size = high_price - low_price
 
+        if range_size <= 0:
+            return None
+
         # Calculate average price
         avg_price = sum(c.close for c in window) / len(window)
         
@@ -163,6 +169,12 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
         # Calculate strength
         strength = self._calculate_zone_strength(window, range_percent, touches)
 
+        sweeps, range_break = self._detect_liquidity_events(
+            window=window,
+            high_price=high_price,
+            low_price=low_price,
+        )
+
         return AccumulationZone(
             start_time=window[0].timestamp,
             end_time=window[-1].timestamp,
@@ -171,6 +183,8 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
             candle_count=len(window),
             strength=strength,
             zone_type=ZoneType.ACCUMULATION,
+            liquidity_sweeps=sweeps,
+            range_break=range_break,
         )
 
     def _is_sideways(self, window: Sequence[Candle]) -> bool:
@@ -310,6 +324,125 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
         )
 
         return time_close_enough and price_overlap
+
+    def _detect_liquidity_events(
+        self,
+        window: Sequence[Candle],
+        high_price: Decimal,
+        low_price: Decimal,
+    ) -> tuple[list[LiquiditySweep], RangeBreak | None]:
+        """Detect sweeps (quick rejection) and range breaks (invalidations).
+
+        Sweep: quick poke outside and close back inside within sweep_max_duration.
+        Range break: penetration >= break_invalid_pct with confirmed closes outside.
+        """
+        sweeps: list[LiquiditySweep] = []
+        range_break: RangeBreak | None = None
+
+        range_height = high_price - low_price
+        if range_height <= 0:
+            return sweeps, range_break
+
+        sweep_window: list[Candle] = []
+        currently_violation: LiquidityEventDirection | None = None
+
+        def finalize_sweep(event_direction: LiquidityEventDirection, candles_span: list[Candle]) -> None:
+            if not candles_span:
+                return
+            penetration = self._calculate_penetration_percent(candles_span, high_price, low_price, range_height)
+            sweeps.append(
+                LiquiditySweep(
+                    start_time=candles_span[0].timestamp,
+                    end_time=candles_span[-1].timestamp,
+                    direction=event_direction,
+                    penetration_percent=penetration,
+                    candle_count=len(candles_span),
+                )
+            )
+
+        for candle in window:
+            above_high = candle.high > high_price
+            below_low = candle.low < low_price
+
+            if above_high and not below_low:
+                direction = LiquidityEventDirection.ABOVE
+            elif below_low and not above_high:
+                direction = LiquidityEventDirection.BELOW
+            else:
+                direction = None
+
+            if direction:
+                # Start or continue a violation cluster
+                if currently_violation is None:
+                    sweep_window = [candle]
+                    currently_violation = direction
+                elif direction == currently_violation:
+                    sweep_window.append(candle)
+                else:
+                    # Different side without resolving prior; treat previous as finished outside
+                    sweep_window = [candle]
+                    currently_violation = direction
+                continue
+
+            # No violation on this candle => we might close a sweep if price closed back inside
+            if sweep_window:
+                last_violation = sweep_window[-1]
+                closes_back_inside = (
+                    (currently_violation == LiquidityEventDirection.ABOVE and last_violation.close < high_price) or
+                    (currently_violation == LiquidityEventDirection.BELOW and last_violation.close > low_price)
+                )
+                duration_ok = len(sweep_window) <= self._settings.sweep_max_duration
+
+                if closes_back_inside and duration_ok:
+                    finalize_sweep(currently_violation, sweep_window)
+                else:
+                    # Potential range break: evaluate penetration and closes outside
+                    penetration = self._calculate_penetration_percent(
+                        sweep_window, high_price, low_price, range_height
+                    )
+                    if penetration >= self._settings.break_invalid_pct:
+                        closes_outside = self._count_closes_outside(
+                            sweep_window, high_price, low_price, currently_violation
+                        )
+                        if closes_outside >= self._settings.break_confirm_candles:
+                            range_break = RangeBreak(
+                                start_time=sweep_window[0].timestamp,
+                                end_time=sweep_window[-1].timestamp,
+                                direction=currently_violation,
+                                penetration_percent=penetration,
+                                candle_count=len(sweep_window),
+                                closes_outside=closes_outside,
+                            )
+                            break
+                sweep_window = []
+                currently_violation = None
+
+        return sweeps, range_break
+
+    def _calculate_penetration_percent(
+        self,
+        candles_span: Sequence[Candle],
+        high_price: Decimal,
+        low_price: Decimal,
+        range_height: Decimal,
+    ) -> float:
+        max_high = max(c.high for c in candles_span)
+        min_low = min(c.low for c in candles_span)
+        above = max(Decimal(0), max_high - high_price)
+        below = max(Decimal(0), low_price - min_low)
+        penetration = max(above, below) / range_height
+        return float(penetration)
+
+    def _count_closes_outside(
+        self,
+        candles_span: Sequence[Candle],
+        high_price: Decimal,
+        low_price: Decimal,
+        direction: LiquidityEventDirection,
+    ) -> int:
+        if direction == LiquidityEventDirection.ABOVE:
+            return sum(1 for c in candles_span if c.close > high_price)
+        return sum(1 for c in candles_span if c.close < low_price)
 
     def _merge_zones(self, left: AccumulationZone, right: AccumulationZone) -> AccumulationZone:
         """Merge two compatible zones into one extended zone."""

@@ -20,6 +20,36 @@ class ZoneType(str, Enum):
     DISTRIBUTION = "DISTRIBUTION"  # Price consolidating before potential breakdown
 
 
+class LiquidityEventDirection(str, Enum):
+    """Direction for sweeps or range breaks relative to the zone."""
+
+    ABOVE = "ABOVE"  # Liquidity taken above the range high (BSL sweep)
+    BELOW = "BELOW"  # Liquidity taken below the range low (SSL sweep)
+
+
+@dataclass(frozen=True)
+class LiquiditySweep:
+    """Short-lived liquidity grab that returns inside the range (sweep/stop hunt)."""
+
+    start_time: datetime
+    end_time: datetime
+    direction: LiquidityEventDirection
+    penetration_percent: float
+    candle_count: int
+
+
+@dataclass(frozen=True)
+class RangeBreak:
+    """Range break that invalidates the accumulation zone."""
+
+    start_time: datetime
+    end_time: datetime
+    direction: LiquidityEventDirection
+    penetration_percent: float
+    candle_count: int
+    closes_outside: int
+
+
 @dataclass(frozen=True)
 class AccumulationZone:
     """
@@ -36,6 +66,8 @@ class AccumulationZone:
     candle_count: int
     strength: float  # 0.0 to 1.0 - how strong/clear the accumulation is
     zone_type: ZoneType = ZoneType.ACCUMULATION
+    liquidity_sweeps: list[LiquiditySweep] = field(default_factory=list)
+    range_break: RangeBreak | None = None
 
     @property
     def range_size(self) -> Decimal:
@@ -86,4 +118,3 @@ class LiquiditySignal:
         if not self.accumulation_zones:
             return None
         return max(self.accumulation_zones, key=lambda z: z.end_time)
-
