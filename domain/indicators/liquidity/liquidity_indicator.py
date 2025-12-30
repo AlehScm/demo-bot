@@ -380,7 +380,13 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
         )
 
     def _zones_can_merge(self, left: AccumulationZone, right: AccumulationZone) -> bool:
-        """Check if two zones should be merged (overlap or very close with similar price ranges)."""
+        """Check if two zones should be merged (overlap or very close with similar price ranges).
+
+        Do not merge zones that already have a confirmed range break; they mark
+        the termination of that accumulation.
+        """
+        if left.range_break is not None or right.range_break is not None:
+            return False
         overlap_start = max(left.start_time, right.start_time)
         overlap_end = min(left.end_time, right.end_time)
 
