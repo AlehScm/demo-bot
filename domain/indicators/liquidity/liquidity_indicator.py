@@ -7,7 +7,6 @@ price ranges where the market is consolidating (moving sideways).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from decimal import Decimal
 from typing import Sequence
 
@@ -18,30 +17,7 @@ from domain.indicators.liquidity.models import (
     LiquiditySignal,
     ZoneType,
 )
-
-
-@dataclass
-class LiquidityIndicatorSettings:
-    """Configuration for the liquidity indicator."""
-
-    # Minimum candles to consider as accumulation zone
-    min_candles_in_zone: int = 25
-    
-    # Maximum price range as percentage of average price to be considered consolidation
-    # Tighter = more selective (0.8% is quite tight)
-    max_range_percent: Decimal = Decimal("0.8")
-    
-    # Minimum zone strength to report (0.0 to 1.0)
-    min_strength: float = 0.55
-    
-    # Minimum touches on support/resistance to confirm accumulation
-    min_boundary_touches: int = 3
-    
-    # Maximum zones to return (most significant ones)
-    max_zones: int = 5
-    
-    # Minimum gap between zones (in candles) to avoid clustering
-    min_gap_between_zones: int = 15
+from domain.indicators.liquidity.settings import LiquidityIndicatorSettings
 
 
 class LiquidityIndicator(Indicator[LiquiditySignal]):
@@ -132,11 +108,12 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
         zones: list[AccumulationZone] = []
         min_window = self._settings.min_candles_in_zone
         max_window = min(len(candles) // 2, min_window * 4)
-        
-        # Use larger step to avoid too many similar zones
-        step = max(min_window // 3, 8)
-        
-        for window_size in range(min_window, max_window + 1, 10):
+
+        # Use reasonable step to scan without skipping adjacent consolidations
+        step = max(min_window // 3, 5)
+        window_increment = max(min_window // 2, 3)
+
+        for window_size in range(min_window, max_window + 1, window_increment):
             for start_idx in range(0, len(candles) - window_size + 1, step):
                 end_idx = start_idx + window_size
                 window = candles[start_idx:end_idx]
@@ -312,11 +289,45 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
             1.0
         )
 
+    def _zones_can_merge(self, left: AccumulationZone, right: AccumulationZone) -> bool:
+        """Check if two zones should be merged (overlap or very close with similar price ranges)."""
+        overlap_start = max(left.start_time, right.start_time)
+        overlap_end = min(left.end_time, right.end_time)
+
+        # Time overlap or very small gap
+        gap_seconds = max((right.start_time - left.end_time).total_seconds(), 0)
+        min_gap_seconds = self._settings.min_gap_between_zones * 60
+        time_close_enough = overlap_start < overlap_end or gap_seconds <= min_gap_seconds
+
+        # Price overlap or near-overlap (allow 10% buffer of combined range)
+        combined_low = min(left.low_price, right.low_price)
+        combined_high = max(left.high_price, right.high_price)
+        combined_range = combined_high - combined_low
+        buffer = combined_range * Decimal("0.10")
+        price_overlap = (
+            right.low_price <= left.high_price + buffer and
+            right.high_price >= left.low_price - buffer
+        )
+
+        return time_close_enough and price_overlap
+
+    def _merge_zones(self, left: AccumulationZone, right: AccumulationZone) -> AccumulationZone:
+        """Merge two compatible zones into one extended zone."""
+        return AccumulationZone(
+            start_time=min(left.start_time, right.start_time),
+            end_time=max(left.end_time, right.end_time),
+            high_price=max(left.high_price, right.high_price),
+            low_price=min(left.low_price, right.low_price),
+            candle_count=left.candle_count + right.candle_count,
+            strength=max(left.strength, right.strength),
+            zone_type=ZoneType.ACCUMULATION,
+        )
+
     def _merge_overlapping_zones(
         self, zones: list[AccumulationZone]
     ) -> list[AccumulationZone]:
         """
-        Merge zones that overlap significantly.
+        Merge zones that overlap or sit very close in time/price.
         """
         if not zones:
             return []
@@ -331,35 +342,11 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
                 continue
 
             last = merged[-1]
-            
-            # Check for time overlap (more than 50% overlap)
-            overlap_start = max(last.start_time, zone.start_time)
-            overlap_end = min(last.end_time, zone.end_time)
-            
-            if overlap_start < overlap_end:
-                # Calculate overlap percentage
-                zone_duration = (zone.end_time - zone.start_time).total_seconds()
-                overlap_duration = (overlap_end - overlap_start).total_seconds()
-                
-                if zone_duration > 0 and overlap_duration / zone_duration > 0.5:
-                    # Significant overlap - merge zones
-                    # Check for price overlap too
-                    price_overlap = (
-                        zone.low_price <= last.high_price and
-                        zone.high_price >= last.low_price
-                    )
-                    
-                    if price_overlap:
-                        # Keep the stronger zone or merge
-                        if zone.strength > last.strength:
-                            merged[-1] = zone
-                        continue
-            
-            # Check minimum gap between zones
-            gap = (zone.start_time - last.end_time).total_seconds()
-            min_gap_seconds = self._settings.min_gap_between_zones * 60  # Assuming 1min candles
-            
-            if gap >= min_gap_seconds or zone.strength > last.strength * 1.2:
-                merged.append(zone)
+
+            if self._zones_can_merge(last, zone):
+                merged[-1] = self._merge_zones(last, zone)
+                continue
+
+            merged.append(zone)
 
         return merged
