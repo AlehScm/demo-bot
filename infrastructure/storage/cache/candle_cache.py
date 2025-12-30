@@ -16,6 +16,8 @@ class CandleCache:
     def __init__(self, cache_file: str | Path) -> None:
         self.cache_file = Path(cache_file)
         self.cache_file.parent.mkdir(parents=True, exist_ok=True)
+        if not self.cache_file.exists():
+            self.cache_file.write_text("{}")
 
     def get(self, symbol: str, timeframe: Timeframe, count: int) -> list[Candle] | None:
         cache = self._read_cache()

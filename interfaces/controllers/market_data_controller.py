@@ -24,15 +24,19 @@ class MarketDataController:
         self.candle_cache = candle_cache
 
     def latest(self, symbol: str, timeframe: Timeframe, count: int = 1) -> Sequence[Candle]:
+        candles: Sequence[Candle] | None = None
+
         if self.candle_cache:
             cached = self.candle_cache.get(symbol=symbol, timeframe=timeframe, count=count)
             if cached:
-                return cached
+                candles = cached
 
-        candles = list(self.fetch_latest.execute(symbol=symbol, timeframe=timeframe, count=count))
+        if candles is None:
+            candles = list(self.fetch_latest.execute(symbol=symbol, timeframe=timeframe, count=count))
 
         if self.candle_cache and candles:
-            self.candle_cache.set(symbol=symbol, timeframe=timeframe, count=count, candles=candles)
+            # Always rewrite cache for every request to keep file fresh.
+            self.candle_cache.set(symbol=symbol, timeframe=timeframe, count=count, candles=list(candles))
 
         return candles
 
