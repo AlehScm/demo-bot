@@ -27,12 +27,15 @@ def test_adjacent_zones_merge_into_single_region():
     into one extended accumulation zone.
     """
     settings = LiquidityIndicatorSettings(
-        min_candles_in_zone=3,
+        min_candles_in_zone=6,
         max_range_percent=Decimal("5"),
         min_strength=0.01,
         min_boundary_touches=1,
         max_zones=5,
         min_gap_between_zones=5,
+        seed_candles=6,
+        break_invalid_pct=Decimal("0.2"),
+        break_confirm_candles=2,
     )
     indicator = LiquidityIndicator(settings=settings)
 

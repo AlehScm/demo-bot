@@ -62,6 +62,9 @@ Entrada Externa (CLI / HTTP) ──► Controllers ──► DTO/Validação ─
 | `ACCUMULATION_MIN_BOUNDARY_TOUCHES` | `3` | Toques mínimos em suporte/resistência para confirmar zona. |
 | `ACCUMULATION_MAX_ZONES` | `5` | Limite de zonas retornadas. |
 | `ACCUMULATION_MIN_GAP_BETWEEN_ZONES` | `15` | Gap mínimo (em candles) entre zonas para evitar clusters. |
+| `ACCUMULATION_SEED_CANDLES` | `50` | Janela inicial para validar uma acumulação antes de estender o range. |
+| `ACCUMULATION_BREAK_INVALID_PCT` | `0.2` | Penetração percentual do range que invalida a acumulação (range break). |
+| `ACCUMULATION_BREAK_CONFIRM_CANDLES` | `2` | Closes consecutivos fora do range necessários para confirmar o break. |
 
 Todas as validações de limite são aplicadas no carregador de configuração e no próprio value object `LiquidityIndicatorSettings`.
 

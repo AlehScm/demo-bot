@@ -17,6 +17,9 @@ def test_detect_liquidity_zones_does_not_reorder_when_chronological():
         min_boundary_touches=1,
         max_zones=1,
         min_gap_between_zones=0,
+        seed_candles=2,
+        break_invalid_pct=Decimal("0.2"),
+        break_confirm_candles=1,
     )
     use_case = DetectLiquidityZones(liquidity_settings=settings)
 

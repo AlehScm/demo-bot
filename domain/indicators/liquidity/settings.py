@@ -14,6 +14,9 @@ class LiquidityIndicatorSettings:
     min_boundary_touches: int = 3
     max_zones: int = 5
     min_gap_between_zones: int = 15
+    seed_candles: int = 50
+    break_invalid_pct: Decimal = Decimal("0.2")
+    break_confirm_candles: int = 2
 
     def __post_init__(self) -> None:
         if self.min_candles_in_zone <= 0:
@@ -28,3 +31,9 @@ class LiquidityIndicatorSettings:
             raise ValueError("max_zones must be greater than zero.")
         if self.min_gap_between_zones < 0:
             raise ValueError("min_gap_between_zones cannot be negative.")
+        if self.seed_candles <= 0:
+            raise ValueError("seed_candles must be greater than zero.")
+        if not 0 < self.break_invalid_pct <= 1:
+            raise ValueError("break_invalid_pct must be between 0 and 1.")
+        if self.break_confirm_candles <= 0:
+            raise ValueError("break_confirm_candles must be greater than zero.")

@@ -33,7 +33,8 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
     3. If range is below threshold % of average price = potential zone
     4. Verify multiple touches on boundaries (support/resistance)
     5. Check for true sideways movement (not trending)
-    6. Merge overlapping zones and return top N strongest
+    6. Extends the zone forward until a sweep or range break occurs using
+       penetration thresholds
     """
 
     def __init__(self, settings: LiquidityIndicatorSettings | None = None) -> None:
@@ -63,7 +64,7 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
         Returns:
             LiquiditySignal with detected accumulation zones.
         """
-        if len(candles) < self._settings.min_candles_in_zone:
+        if len(candles) < self._settings.seed_candles:
             return LiquiditySignal(
                 accumulation_zones=[],
                 total_zones=0,
@@ -71,15 +72,12 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
                 analysis_period_end=candles[-1].timestamp if candles else None,
             )
 
-        # Detect raw zones using sliding window
+        # Detect raw zones using seed + extension logic
         raw_zones = self._detect_accumulation_zones(candles)
-
-        # Merge overlapping zones
-        merged_zones = self._merge_overlapping_zones(raw_zones)
 
         # Filter by minimum strength
         filtered_zones = [
-            zone for zone in merged_zones
+            zone for zone in raw_zones
             if zone.strength >= self._settings.min_strength
         ]
 
@@ -103,64 +101,172 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
         self, candles: Sequence[Candle]
     ) -> list[AccumulationZone]:
         """
-        Detect accumulation zones using sliding window approach.
+        Detect accumulation zones using a seed-window approach with sweep/break logic.
         """
         zones: list[AccumulationZone] = []
-        min_window = self._settings.min_candles_in_zone
-        max_window = min(len(candles) // 2, min_window * 4)
+        idx = 0
+        seed = self._settings.seed_candles
 
-        # Use reasonable step to scan without skipping adjacent consolidations
-        step = max(min_window // 3, 5)
-        window_increment = max(min_window // 2, 3)
+        while idx + seed <= len(candles):
+            window = candles[idx : idx + seed]
+            seed_info = self._evaluate_seed_window(window)
 
-        for window_size in range(min_window, max_window + 1, window_increment):
-            for start_idx in range(0, len(candles) - window_size + 1, step):
-                end_idx = start_idx + window_size
-                window = candles[start_idx:end_idx]
-                
-                zone = self._analyze_window(window, start_idx)
-                if zone is not None:
-                    zones.append(zone)
+            if seed_info is None:
+                idx += 1
+                continue
+
+            range_low, range_high = seed_info
+            end_idx, zone_high, zone_low, next_start = self._extend_zone(
+                candles, idx, range_low, range_high
+            )
+
+            zone_candles = candles[idx : end_idx + 1]
+            zone = self._build_zone(zone_candles, zone_low, zone_high)
+            if zone is not None:
+                zones.append(zone)
+
+            if next_start <= idx:
+                idx += 1
+            else:
+                idx = next_start
 
         return zones
 
-    def _analyze_window(
-        self, window: Sequence[Candle], start_idx: int
-    ) -> AccumulationZone | None:
+    def _evaluate_seed_window(
+        self, window: Sequence[Candle]
+    ) -> tuple[Decimal, Decimal] | None:
         """
-        Analyze a window of candles to determine if it's an accumulation zone.
+        Validate a seed window and return its initial range (low, high).
         """
-        if len(window) < self._settings.min_candles_in_zone:
+        if len(window) < self._settings.seed_candles:
             return None
 
-        # Calculate range
         high_price = max(c.high for c in window)
         low_price = min(c.low for c in window)
         range_size = high_price - low_price
 
-        # Calculate average price
+        if range_size <= 0:
+            return None
+
         avg_price = sum(c.close for c in window) / len(window)
-        
         if avg_price == 0:
             return None
 
-        # Calculate range as percentage of average price
         range_percent = (range_size / avg_price) * 100
-
-        # Check if range is tight enough for accumulation
         if range_percent > self._settings.max_range_percent:
             return None
 
-        # Check for true sideways movement (not trending)
         if not self._is_sideways(window):
             return None
 
-        # Count boundary touches (support/resistance tests)
         touches = self._count_boundary_touches(window, high_price, low_price)
         if touches < self._settings.min_boundary_touches:
             return None
 
-        # Calculate strength
+        return low_price, high_price
+
+    def _extend_zone(
+        self,
+        candles: Sequence[Candle],
+        start_idx: int,
+        range_low: Decimal,
+        range_high: Decimal,
+    ) -> tuple[int, Decimal, Decimal, int]:
+        """
+        Extend a validated seed zone forward until a confirmed break occurs.
+
+        Returns:
+            end_idx: index of last candle considered part of the zone
+            zone_high: highest high inside the zone (including sweeps)
+            zone_low: lowest low inside the zone (including sweeps)
+            next_start_idx: index where next search should resume (break candle)
+        """
+        range_height = range_high - range_low
+        if range_height <= 0:
+            seed_end = start_idx + self._settings.seed_candles - 1
+            return seed_end, range_high, range_low, seed_end + 1
+
+        zone_high = range_high
+        zone_low = range_low
+        end_idx = start_idx + self._settings.seed_candles - 1
+        next_start_idx = end_idx + 1
+        outside_closes = 0
+
+        for idx in range(end_idx + 1, len(candles)):
+            candle = candles[idx]
+            breach_high = candle.high > range_high
+            breach_low = candle.low < range_low
+
+            if not breach_high and not breach_low:
+                outside_closes = 0
+                zone_high = max(zone_high, candle.high)
+                zone_low = min(zone_low, candle.low)
+                end_idx = idx
+                next_start_idx = idx + 1
+                continue
+
+            penetration_up = (candle.high - range_high) / range_height if breach_high else Decimal("0")
+            penetration_down = (range_low - candle.low) / range_height if breach_low else Decimal("0")
+            penetration = max(penetration_up, penetration_down)
+
+            close_inside = range_low <= candle.close <= range_high
+            close_outside = candle.close < range_low or candle.close > range_high
+
+            if penetration < self._settings.break_invalid_pct and close_inside:
+                # Sweep: reject and return into range
+                outside_closes = 0
+                zone_high = max(zone_high, candle.high)
+                zone_low = min(zone_low, candle.low)
+                end_idx = idx
+                next_start_idx = idx + 1
+                continue
+
+            if close_outside:
+                outside_closes += 1
+            else:
+                outside_closes = 0
+
+            if penetration >= self._settings.break_invalid_pct or outside_closes >= self._settings.break_confirm_candles:
+                # Confirmed break: stop before this candle
+                next_start_idx = idx
+                break
+
+            zone_high = max(zone_high, candle.high)
+            zone_low = min(zone_low, candle.low)
+            end_idx = idx
+            next_start_idx = idx + 1
+
+        return end_idx, zone_high, zone_low, next_start_idx
+
+    def _build_zone(
+        self,
+        window: Sequence[Candle],
+        low_price: Decimal,
+        high_price: Decimal,
+    ) -> AccumulationZone | None:
+        """Construct a zone object after validation."""
+        if len(window) < self._settings.min_candles_in_zone:
+            return None
+
+        range_size = high_price - low_price
+        if range_size <= 0:
+            return None
+
+        avg_price = sum(c.close for c in window) / len(window)
+        if avg_price == 0:
+            return None
+
+        range_percent = (range_size / avg_price) * 100
+        if range_percent > self._settings.max_range_percent:
+            return None
+
+        if not self._is_sideways(window):
+            return None
+
+        touches = self._count_boundary_touches(window, high_price, low_price)
+        if touches < self._settings.min_boundary_touches:
+            return None
+
         strength = self._calculate_zone_strength(window, range_percent, touches)
 
         return AccumulationZone(
