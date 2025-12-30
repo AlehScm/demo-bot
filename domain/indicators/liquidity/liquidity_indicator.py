@@ -161,6 +161,14 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
         if not self._is_sideways(window):
             return None
 
+        # Reject if net drift is too large relative to range (impulsive move)
+        if self._net_drift_too_high(window, high_price, low_price):
+            return None
+
+        # Reject if linear slope of closes indicates meaningful trend
+        if self._slope_too_strong(window):
+            return None
+
         # Count boundary touches (support/resistance tests)
         touches = self._count_boundary_touches(window, high_price, low_price)
         if touches < self._settings.min_boundary_touches:
@@ -225,6 +233,58 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
             mid_dev < threshold and
             end_dev < threshold
         )
+
+    def _net_drift_too_high(
+        self,
+        window: Sequence[Candle],
+        high: Decimal,
+        low: Decimal,
+    ) -> bool:
+        """
+        Reject windows where the end-to-start drift is too large vs range.
+
+        Impulsive moves that trend should not be classified as sideways accumulation.
+        """
+        range_size = high - low
+        if range_size <= 0:
+            return True
+
+        start_close = window[0].close
+        end_close = window[-1].close
+        drift = abs(end_close - start_close)
+        drift_ratio = float(drift / range_size)
+
+        return drift_ratio > self._settings.max_trend_drift_ratio
+
+    def _slope_too_strong(self, window: Sequence[Candle]) -> bool:
+        """
+        Use simple linear regression slope of closes vs index to filter trends.
+
+        The slope is normalized by average price and expressed in percent across
+        the full window. Trending legs get rejected.
+        """
+        n = len(window)
+        if n < 3:
+            return True
+
+        avg_price = sum(c.close for c in window) / n
+        if avg_price == 0:
+            return True
+
+        # Compute slope manually without numpy
+        indices = list(range(n))
+        mean_idx = sum(indices) / n
+        mean_close = avg_price
+
+        num = sum((i - mean_idx) * (float(c.close) - float(mean_close)) for i, c in zip(indices, window))
+        den = sum((i - mean_idx) ** 2 for i in indices)
+        if den == 0:
+            return True
+
+        slope = num / den  # price units per candle
+        slope_percent = abs(slope * (n - 1) / float(avg_price)) * 100  # over window length
+
+        return slope_percent > self._settings.max_slope_percent
 
     def _count_boundary_touches(
         self, window: Sequence[Candle], high: Decimal, low: Decimal

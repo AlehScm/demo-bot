@@ -17,6 +17,8 @@ class LiquidityIndicatorSettings:
     break_invalid_pct: float = 0.2  # penetration % of range height that invalidates the zone
     break_confirm_candles: int = 2  # closes outside to confirm break
     sweep_max_duration: int = 5  # max candles for a sweep (quick in/out)
+    max_trend_drift_ratio: float = 0.6  # max net drift vs range height to still count as sideways
+    max_slope_percent: float = 1.0  # max linear slope (close trend) in % of avg price across the window
 
     def __post_init__(self) -> None:
         if self.min_candles_in_zone <= 0:
@@ -37,3 +39,7 @@ class LiquidityIndicatorSettings:
             raise ValueError("break_confirm_candles must be greater than zero.")
         if self.sweep_max_duration <= 0:
             raise ValueError("sweep_max_duration must be greater than zero.")
+        if not 0.0 < self.max_trend_drift_ratio < 2.0:
+            raise ValueError("max_trend_drift_ratio must be between 0 and 2 (exclusive).")
+        if not 0.0 < self.max_slope_percent < 5.0:
+            raise ValueError("max_slope_percent must be between 0 and 5 (exclusive).")

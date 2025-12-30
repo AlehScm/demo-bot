@@ -48,4 +48,6 @@ def load_liquidity_settings() -> LiquidityIndicatorSettings:
         break_invalid_pct=float(os.getenv("ACCUMULATION_BREAK_INVALID_PCT", 0.2)),
         break_confirm_candles=_int_from_env("ACCUMULATION_BREAK_CONFIRM_CANDLES", 2),
         sweep_max_duration=_int_from_env("ACCUMULATION_SWEEP_MAX_DURATION", 5),
+        max_trend_drift_ratio=float(os.getenv("ACCUMULATION_MAX_TREND_DRIFT_RATIO", 0.6)),
+        max_slope_percent=float(os.getenv("ACCUMULATION_MAX_SLOPE_PERCENT", 1.0)),
     )
