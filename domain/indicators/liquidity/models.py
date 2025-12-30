@@ -35,6 +35,9 @@ class AccumulationZone:
     low_price: Decimal
     candle_count: int
     strength: float  # 0.0 to 1.0 - how strong/clear the accumulation is
+    safe_zone_high: Decimal
+    safe_zone_low: Decimal
+    invalidated_at: datetime | None = None
     zone_type: ZoneType = ZoneType.ACCUMULATION
 
     @property
@@ -46,6 +49,16 @@ class AccumulationZone:
     def mid_price(self) -> Decimal:
         """Calculate the middle price of the zone."""
         return (self.high_price + self.low_price) / 2
+
+    @property
+    def safe_zone_range(self) -> Decimal:
+        """Calculate the total size of the safe zone around the accumulation range."""
+        return self.safe_zone_high - self.safe_zone_low
+
+    @property
+    def is_active(self) -> bool:
+        """Indicate if the accumulation has not been invalidated by a breakout."""
+        return self.invalidated_at is None
 
     @property
     def range_percent(self) -> float:
@@ -87,3 +100,7 @@ class LiquiditySignal:
             return None
         return max(self.accumulation_zones, key=lambda z: z.end_time)
 
+    @property
+    def active_accumulation_zones(self) -> list[AccumulationZone]:
+        """Return only zones that have not been invalidated by a breakout."""
+        return [zone for zone in self.accumulation_zones if zone.is_active]

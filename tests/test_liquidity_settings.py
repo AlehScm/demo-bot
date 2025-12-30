@@ -13,6 +13,7 @@ def test_load_liquidity_settings_defaults(monkeypatch):
         "ACCUMULATION_MIN_BOUNDARY_TOUCHES",
         "ACCUMULATION_MAX_ZONES",
         "ACCUMULATION_MIN_GAP_BETWEEN_ZONES",
+        "ACCUMULATION_SAFE_ZONE_PERCENT",
     ):
         monkeypatch.delenv(key, raising=False)
 
@@ -24,6 +25,7 @@ def test_load_liquidity_settings_defaults(monkeypatch):
     assert settings.min_boundary_touches == 3
     assert settings.max_zones == 5
     assert settings.min_gap_between_zones == 15
+    assert settings.safe_zone_percent == Decimal("1")
 
 
 def test_load_liquidity_settings_overrides(monkeypatch):
@@ -33,6 +35,7 @@ def test_load_liquidity_settings_overrides(monkeypatch):
     monkeypatch.setenv("ACCUMULATION_MIN_BOUNDARY_TOUCHES", "4")
     monkeypatch.setenv("ACCUMULATION_MAX_ZONES", "7")
     monkeypatch.setenv("ACCUMULATION_MIN_GAP_BETWEEN_ZONES", "20")
+    monkeypatch.setenv("ACCUMULATION_SAFE_ZONE_PERCENT", "2.5")
 
     settings = load_liquidity_settings()
 
@@ -42,3 +45,4 @@ def test_load_liquidity_settings_overrides(monkeypatch):
     assert settings.min_boundary_touches == 4
     assert settings.max_zones == 7
     assert settings.min_gap_between_zones == 20
+    assert settings.safe_zone_percent == Decimal("2.5")

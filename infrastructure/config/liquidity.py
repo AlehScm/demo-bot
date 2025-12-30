@@ -45,4 +45,5 @@ def load_liquidity_settings() -> LiquidityIndicatorSettings:
         min_boundary_touches=_int_from_env("ACCUMULATION_MIN_BOUNDARY_TOUCHES", 3),
         max_zones=_int_from_env("ACCUMULATION_MAX_ZONES", 5),
         min_gap_between_zones=_int_from_env("ACCUMULATION_MIN_GAP_BETWEEN_ZONES", 15),
+        safe_zone_percent=_decimal_from_env("ACCUMULATION_SAFE_ZONE_PERCENT", Decimal("1")),
     )
