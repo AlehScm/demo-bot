@@ -32,6 +32,7 @@ def _base_settings() -> LiquidityIndicatorSettings:
         seed_candles=6,
         break_invalid_pct=Decimal("0.2"),
         break_confirm_candles=2,
+        sweep_tolerance_pct=Decimal("0.04"),
     )
 
 
@@ -118,3 +119,31 @@ def test_consecutive_closes_outside_confirm_break():
     assert zone.candle_count == 7
     assert zone.high_price == Decimal("101.1")
     assert zone.low_price == Decimal("99")
+
+
+def test_tiny_outside_close_does_not_break():
+    settings = _base_settings()
+    indicator = LiquidityIndicator(settings=settings)
+
+    start = datetime(2024, 1, 1, 0, 0)
+    candles: list[Candle] = []
+
+    for i in range(6):
+        ts = start + timedelta(minutes=i)
+        candles.append(_candle(ts, "99", "101"))
+
+    # Very shallow poke below (penetration ~2.5%) and closes slightly outside
+    shallow_ts = start + timedelta(minutes=6)
+    candles.append(_candle(shallow_ts, "98.95", "101", "98.97"))
+
+    # Back inside
+    back_ts = start + timedelta(minutes=7)
+    candles.append(_candle(back_ts, "99.2", "100.8"))
+
+    signal = indicator.analyze(candles)
+
+    assert signal.total_zones == 1
+    zone = signal.accumulation_zones[0]
+    assert zone.candle_count == 8
+    assert zone.low_price == Decimal("98.95")
+    assert zone.high_price == Decimal("101")

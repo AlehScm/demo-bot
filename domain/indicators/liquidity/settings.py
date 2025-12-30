@@ -17,6 +17,7 @@ class LiquidityIndicatorSettings:
     seed_candles: int = 50
     break_invalid_pct: Decimal = Decimal("0.2")
     break_confirm_candles: int = 2
+    sweep_tolerance_pct: Decimal = Decimal("0.05")
 
     def __post_init__(self) -> None:
         if self.min_candles_in_zone <= 0:
@@ -37,3 +38,5 @@ class LiquidityIndicatorSettings:
             raise ValueError("break_invalid_pct must be between 0 and 1.")
         if self.break_confirm_candles <= 0:
             raise ValueError("break_confirm_candles must be greater than zero.")
+        if not 0 < self.sweep_tolerance_pct < self.break_invalid_pct:
+            raise ValueError("sweep_tolerance_pct must be between 0 and break_invalid_pct.")

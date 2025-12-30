@@ -212,6 +212,15 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
             close_inside = range_low <= candle.close <= range_high
             close_outside = candle.close < range_low or candle.close > range_high
 
+            if penetration <= self._settings.sweep_tolerance_pct:
+                # Very small poke through the range: treat as sweep regardless of close
+                outside_closes = 0
+                zone_high = max(zone_high, candle.high)
+                zone_low = min(zone_low, candle.low)
+                end_idx = idx
+                next_start_idx = idx + 1
+                continue
+
             if penetration < self._settings.break_invalid_pct and close_inside:
                 # Sweep: reject and return into range
                 outside_closes = 0
@@ -231,6 +240,7 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
                 next_start_idx = idx
                 break
 
+            # Soft penetration but not a confirmed break: keep extending the box
             zone_high = max(zone_high, candle.high)
             zone_low = min(zone_low, candle.low)
             end_idx = idx

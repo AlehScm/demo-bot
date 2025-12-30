@@ -65,6 +65,7 @@ Entrada Externa (CLI / HTTP) ──► Controllers ──► DTO/Validação ─
 | `ACCUMULATION_SEED_CANDLES` | `50` | Janela inicial para validar uma acumulação antes de estender o range. |
 | `ACCUMULATION_BREAK_INVALID_PCT` | `0.2` | Penetração percentual do range que invalida a acumulação (range break). |
 | `ACCUMULATION_BREAK_CONFIRM_CANDLES` | `2` | Closes consecutivos fora do range necessários para confirmar o break. |
+| `ACCUMULATION_SWEEP_TOLERANCE_PCT` | `0.05` | Penetração máxima tolerada (em % do range) para tratar o furo como sweep e manter a acumulação. |
 
 Todas as validações de limite são aplicadas no carregador de configuração e no próprio value object `LiquidityIndicatorSettings`.
 
