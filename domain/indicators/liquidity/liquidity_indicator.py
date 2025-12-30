@@ -7,7 +7,6 @@ price ranges where the market is consolidating (moving sideways).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 from decimal import Decimal
 from typing import Sequence
 
@@ -18,30 +17,7 @@ from domain.indicators.liquidity.models import (
     LiquiditySignal,
     ZoneType,
 )
-
-
-@dataclass
-class LiquidityIndicatorSettings:
-    """Configuration for the liquidity indicator."""
-
-    # Minimum candles to consider as accumulation zone
-    min_candles_in_zone: int = 25
-    
-    # Maximum price range as percentage of average price to be considered consolidation
-    # Tighter = more selective (0.8% is quite tight)
-    max_range_percent: Decimal = Decimal("0.8")
-    
-    # Minimum zone strength to report (0.0 to 1.0)
-    min_strength: float = 0.55
-    
-    # Minimum touches on support/resistance to confirm accumulation
-    min_boundary_touches: int = 3
-    
-    # Maximum zones to return (most significant ones)
-    max_zones: int = 5
-    
-    # Minimum gap between zones (in candles) to avoid clustering
-    min_gap_between_zones: int = 15
+from domain.indicators.liquidity.settings import LiquidityIndicatorSettings
 
 
 class LiquidityIndicator(Indicator[LiquiditySignal]):

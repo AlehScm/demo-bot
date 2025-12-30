@@ -4,23 +4,25 @@ from typing import List
 
 from fastapi import FastAPI, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
 
 from application.policies.timeframe_policy import TimeframePolicy
+from application.use_cases.detect_liquidity_zones import DetectLiquidityZones
 from application.use_cases.fetch_historical_ohlcv import FetchHistoricalOHLCV
 from application.use_cases.fetch_latest_ohlcv import FetchLatestOHLCV
 from application.use_cases.generate_trading_decision import GenerateTradingDecision
 from domain.exceptions.errors import DataProviderError
 from domain.indicators.trend import TrendIndicator, SwingClassification
-from domain.indicators.liquidity import LiquidityIndicator
 from domain.services.trend_detector import TrendDetector
 from domain.value_objects.timeframe import Timeframe
 from domain.value_objects.trend import TrendDirection
+from infrastructure.config.liquidity import load_liquidity_settings
 from infrastructure.config.settings import load_settings
 from infrastructure.data_providers.twelve_data_client import TwelveDataClient
+from infrastructure.storage.cache.candle_cache import CandleCache
 from infrastructure.storage.logging.logger import get_logger
 from interfaces.controllers.market_data_controller import MarketDataController
 from interfaces.controllers.trading_controller import TradingController
+from interfaces.controllers.liquidity_controller import LiquidityController
 from .models import (
     TradeResponse, 
     CandleResponse as CandleResponseModel, 
@@ -63,6 +65,7 @@ def create_app() -> FastAPI:
         api_key=settings.api_key,
         base_url=settings.base_url or "https://api.twelvedata.com",
     )
+    candle_cache = CandleCache(cache_file=".cache/candles.json")
     fetch_latest = FetchLatestOHLCV(
         market_data_service=data_provider,
         timeframe_policy=timeframe_policy,
@@ -72,19 +75,23 @@ def create_app() -> FastAPI:
         timeframe_policy=timeframe_policy,
     )
     trend_detector = TrendDetector()
+    liquidity_settings = load_liquidity_settings()
     
     # Setup use cases
     generate_decision = GenerateTradingDecision(
         fetch_latest=fetch_latest,
         trend_detector=trend_detector,
     )
+    detect_liquidity_zones = DetectLiquidityZones(liquidity_settings=liquidity_settings)
     
     # Setup controllers
     market_data_controller = MarketDataController(
         fetch_latest=fetch_latest,
         fetch_historical=fetch_historical,
+        candle_cache=candle_cache,
     )
     trading_controller = TradingController(generate_decision=generate_decision)
+    liquidity_controller = LiquidityController(detect_liquidity_zones=detect_liquidity_zones)
 
     @app.get("/api/candles", response_model=List[CandleResponseModel])
     async def get_candles(
@@ -448,7 +455,7 @@ def create_app() -> FastAPI:
             candles = market_data_controller.latest(symbol=symbol, timeframe=tf, count=count)
             candles_list = list(candles)
             
-            if len(candles_list) < 20:
+            if len(candles_list) < liquidity_settings.min_candles_in_zone:
                 return LiquidityIndicatorResponse(
                     accumulation_zones=[],
                     total_zones=0,
@@ -457,9 +464,8 @@ def create_app() -> FastAPI:
             # Reverse to have oldest first (chronological order)
             candles_list = list(reversed(candles_list))
             
-            # Run liquidity indicator
-            liquidity_indicator = LiquidityIndicator()
-            signal = liquidity_indicator.analyze(candles_list)
+            # Run liquidity indicator via use case/controller
+            signal = liquidity_controller.analyze(candles_list)
             
             # Convert accumulation zones to response format
             zones_response: List[AccumulationZoneResponse] = []
@@ -559,8 +565,7 @@ def create_app() -> FastAPI:
             )
             
             # ===== ANÁLISE DE LIQUIDEZ (local, sem chamada externa) =====
-            liquidity_indicator = LiquidityIndicator()
-            liquidity_signal = liquidity_indicator.analyze(candles_chronological)
+            liquidity_signal = liquidity_controller.analyze(candles_chronological)
             
             zones_response: List[AccumulationZoneResponse] = []
             for zone in liquidity_signal.accumulation_zones:
@@ -595,4 +600,3 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
-

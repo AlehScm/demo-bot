@@ -17,6 +17,7 @@ from domain.indicators.trend import (
 from domain.indicators.liquidity import (
     AccumulationZone,
     LiquidityIndicator,
+    LiquidityIndicatorSettings,
     LiquiditySignal,
 )
 
@@ -26,10 +27,10 @@ __all__ = [
     "BreakOfStructure",
     "Indicator",
     "LiquidityIndicator",
+    "LiquidityIndicatorSettings",
     "LiquiditySignal",
     "SwingClassification",
     "SwingPoint",
     "TrendIndicator",
     "TrendSignal",
 ]
-

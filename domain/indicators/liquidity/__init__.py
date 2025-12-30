@@ -11,11 +11,12 @@ from domain.indicators.liquidity.models import (
     AccumulationZone,
     LiquiditySignal,
 )
+from domain.indicators.liquidity.settings import LiquidityIndicatorSettings
 from domain.indicators.liquidity.liquidity_indicator import LiquidityIndicator
 
 __all__ = [
     "AccumulationZone",
     "LiquidityIndicator",
+    "LiquidityIndicatorSettings",
     "LiquiditySignal",
 ]
-
