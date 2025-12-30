@@ -136,16 +136,34 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
         if len(window) < self._settings.min_candles_in_zone:
             return None
 
+        # Detect sweeps and invalidating breaks on the full window
+        sweeps, range_break = self._detect_liquidity_events(
+            window=window,
+            high_price=max(c.high for c in window),
+            low_price=min(c.low for c in window),
+        )
+
+        # If break found, clip the window so accumulation ends at the break
+        effective_window = window
+        if range_break is not None:
+            cut_idx = max(range_break.start_index, 0)
+            if cut_idx < self._settings.min_candles_in_zone:
+                return None
+            effective_window = window[:cut_idx]
+
+        if len(effective_window) < self._settings.min_candles_in_zone:
+            return None
+
         # Calculate range
-        high_price = max(c.high for c in window)
-        low_price = min(c.low for c in window)
+        high_price = max(c.high for c in effective_window)
+        low_price = min(c.low for c in effective_window)
         range_size = high_price - low_price
 
         if range_size <= 0:
             return None
 
         # Calculate average price
-        avg_price = sum(c.close for c in window) / len(window)
+        avg_price = sum(c.close for c in effective_window) / len(effective_window)
         
         if avg_price == 0:
             return None
@@ -158,37 +176,35 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
             return None
 
         # Check for true sideways movement (not trending)
-        if not self._is_sideways(window):
+        if not self._is_sideways(effective_window):
             return None
 
         # Reject if net drift is too large relative to range (impulsive move)
-        if self._net_drift_too_high(window, high_price, low_price):
+        if self._net_drift_too_high(effective_window, high_price, low_price):
             return None
 
         # Reject if linear slope of closes indicates meaningful trend
-        if self._slope_too_strong(window):
+        if self._slope_too_strong(effective_window):
             return None
 
         # Count boundary touches (support/resistance tests)
-        touches = self._count_boundary_touches(window, high_price, low_price)
+        touches = self._count_boundary_touches(effective_window, high_price, low_price)
         if touches < self._settings.min_boundary_touches:
             return None
 
         # Calculate strength
-        strength = self._calculate_zone_strength(window, range_percent, touches)
+        strength = self._calculate_zone_strength(effective_window, range_percent, touches)
 
-        sweeps, range_break = self._detect_liquidity_events(
-            window=window,
-            high_price=high_price,
-            low_price=low_price,
-        )
+        # Keep only sweeps that occurred before the end of the clipped zone
+        zone_end_time = effective_window[-1].timestamp
+        sweeps = [s for s in sweeps if s.end_time <= zone_end_time]
 
         return AccumulationZone(
             start_time=window[0].timestamp,
-            end_time=window[-1].timestamp,
+            end_time=effective_window[-1].timestamp,
             high_price=high_price,
             low_price=low_price,
-            candle_count=len(window),
+            candle_count=len(effective_window),
             strength=strength,
             zone_type=ZoneType.ACCUMULATION,
             liquidity_sweeps=sweeps,
@@ -403,24 +419,26 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
         if range_height <= 0:
             return sweeps, range_break
 
-        sweep_window: list[Candle] = []
+        sweep_window: list[tuple[int, Candle]] = []
         currently_violation: LiquidityEventDirection | None = None
 
-        def finalize_sweep(event_direction: LiquidityEventDirection, candles_span: list[Candle]) -> None:
+        def finalize_sweep(event_direction: LiquidityEventDirection, candles_span: list[tuple[int, Candle]]) -> None:
             if not candles_span:
                 return
-            penetration = self._calculate_penetration_percent(candles_span, high_price, low_price, range_height)
+            penetration = self._calculate_penetration_percent(
+                [c for _, c in candles_span], high_price, low_price, range_height
+            )
             sweeps.append(
                 LiquiditySweep(
-                    start_time=candles_span[0].timestamp,
-                    end_time=candles_span[-1].timestamp,
+                    start_time=candles_span[0][1].timestamp,
+                    end_time=candles_span[-1][1].timestamp,
                     direction=event_direction,
                     penetration_percent=penetration,
                     candle_count=len(candles_span),
                 )
             )
 
-        for candle in window:
+        for idx, candle in enumerate(window):
             above_high = candle.high > high_price
             below_low = candle.low < low_price
 
@@ -434,19 +452,19 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
             if direction:
                 # Start or continue a violation cluster
                 if currently_violation is None:
-                    sweep_window = [candle]
+                    sweep_window = [(idx, candle)]
                     currently_violation = direction
                 elif direction == currently_violation:
-                    sweep_window.append(candle)
+                    sweep_window.append((idx, candle))
                 else:
                     # Different side without resolving prior; treat previous as finished outside
-                    sweep_window = [candle]
+                    sweep_window = [(idx, candle)]
                     currently_violation = direction
                 continue
 
             # No violation on this candle => we might close a sweep if price closed back inside
             if sweep_window:
-                last_violation = sweep_window[-1]
+                last_idx, last_violation = sweep_window[-1]
                 closes_back_inside = (
                     (currently_violation == LiquidityEventDirection.ABOVE and last_violation.close < high_price) or
                     (currently_violation == LiquidityEventDirection.BELOW and last_violation.close > low_price)
@@ -458,16 +476,18 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
                 else:
                     # Potential range break: evaluate penetration and closes outside
                     penetration = self._calculate_penetration_percent(
-                        sweep_window, high_price, low_price, range_height
+                        [c for _, c in sweep_window], high_price, low_price, range_height
                     )
                     if penetration >= self._settings.break_invalid_pct:
                         closes_outside = self._count_closes_outside(
-                            sweep_window, high_price, low_price, currently_violation
+                            [c for _, c in sweep_window], high_price, low_price, currently_violation
                         )
                         if closes_outside >= self._settings.break_confirm_candles:
                             range_break = RangeBreak(
-                                start_time=sweep_window[0].timestamp,
-                                end_time=sweep_window[-1].timestamp,
+                                start_time=sweep_window[0][1].timestamp,
+                                end_time=sweep_window[-1][1].timestamp,
+                                start_index=sweep_window[0][0],
+                                end_index=sweep_window[-1][0],
                                 direction=currently_violation,
                                 penetration_percent=penetration,
                                 candle_count=len(sweep_window),
@@ -486,8 +506,10 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
         low_price: Decimal,
         range_height: Decimal,
     ) -> float:
-        max_high = max(c.high for c in candles_span)
-        min_low = min(c.low for c in candles_span)
+        highs = [c.high for c in candles_span]
+        lows = [c.low for c in candles_span]
+        max_high = max(highs)
+        min_low = min(lows)
         above = max(Decimal(0), max_high - high_price)
         below = max(Decimal(0), low_price - min_low)
         penetration = max(above, below) / range_height

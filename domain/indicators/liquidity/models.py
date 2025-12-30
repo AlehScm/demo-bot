@@ -44,6 +44,8 @@ class RangeBreak:
 
     start_time: datetime
     end_time: datetime
+    start_index: int
+    end_index: int
     direction: LiquidityEventDirection
     penetration_percent: float
     candle_count: int
