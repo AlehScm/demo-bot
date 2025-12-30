@@ -136,11 +136,18 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
         if len(window) < self._settings.min_candles_in_zone:
             return None
 
-        # Detect sweeps and invalidating breaks on the full window
+        # Use the first chunk as the seed range reference (prevents impulses later in
+        # the window from redefining the range and hiding breaks).
+        seed_length = min(self._settings.min_candles_in_zone, len(window))
+        seed_window = window[:seed_length]
+        seed_high = max(c.high for c in seed_window)
+        seed_low = min(c.low for c in seed_window)
+
+        # Detect sweeps and invalidating breaks relative to the seed range
         sweeps, range_break = self._detect_liquidity_events(
             window=window,
-            high_price=max(c.high for c in window),
-            low_price=min(c.low for c in window),
+            high_price=seed_high,
+            low_price=seed_low,
         )
 
         # If break found, clip the window so accumulation ends at the break
@@ -188,7 +195,7 @@ class LiquidityIndicator(Indicator[LiquiditySignal]):
             return None
 
         # Count boundary touches (support/resistance tests)
-        touches = self._count_boundary_touches(effective_window, high_price, low_price)
+        touches = self._count_boundary_touches(effective_window, seed_high, seed_low)
         if touches < self._settings.min_boundary_touches:
             return None
 
